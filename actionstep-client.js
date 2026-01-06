@@ -60,6 +60,8 @@ class ActionstepClient {
         document.getElementById('testConnection').disabled = false;
         document.getElementById('loadMatters').disabled = false;
         document.getElementById('loadContacts').disabled = false;
+        document.getElementById('lookupMatter').disabled = false;
+        document.getElementById('matterIdInput').disabled = false;
     }
 
     /**
@@ -215,6 +217,61 @@ function displayRawData(data) {
     output.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
 }
 
+function displayMatterDetails(matter) {
+    const output = document.getElementById('dataOutput');
+    
+    if (!matter) {
+        output.innerHTML = '<div class="error">Matter not found.</div>';
+        return;
+    }
+
+    const html = `
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #007bff;">
+            <h3 style="margin: 0 0 20px 0; color: #007bff; font-size: 20px;">
+                ${matter.name || 'Untitled Matter'}
+            </h3>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                <div>
+                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Matter ID</div>
+                    <div style="font-size: 16px; font-weight: 600; color: #333;">${matter.id}</div>
+                </div>
+                
+                <div>
+                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">File Reference</div>
+                    <div style="font-size: 16px; font-weight: 600; color: #333;">${matter.reference || 'N/A'}</div>
+                </div>
+                
+                <div>
+                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Status</div>
+                    <div style="font-size: 16px; font-weight: 600; color: ${matter.status === 'open' ? '#28a745' : '#6c757d'};">
+                        ${matter.status || 'N/A'}
+                    </div>
+                </div>
+                
+                <div>
+                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Priority</div>
+                    <div style="font-size: 16px; font-weight: 600; color: #333;">${matter.priority || 'N/A'}</div>
+                </div>
+            </div>
+            
+            ${matter.links && matter.links.assignedTo ? `
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Assigned To</div>
+                    <div style="font-size: 14px; color: #333;">Participant ID: ${matter.links.assignedTo}</div>
+                </div>
+            ` : ''}
+            
+            <details style="margin-top: 20px;">
+                <summary style="cursor: pointer; color: #007bff; font-weight: 600;">Show Full JSON</summary>
+                <pre style="margin-top: 10px; background: white; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px; max-height: 400px; overflow-y: auto;">${JSON.stringify(matter, null, 2)}</pre>
+            </details>
+        </div>
+    `;
+    
+    output.innerHTML = html;
+}
+
 // Button Event Handlers
 document.getElementById('testConnection').addEventListener('click', async () => {
     try {
@@ -272,6 +329,47 @@ document.getElementById('loadContacts').addEventListener('click', async () => {
         console.error('Failed to load contacts:', error);
         updateStatus('disconnected', 'Failed to load contacts');
         showError(`Failed to load contacts: ${error.message}`);
+    }
+});
+
+document.getElementById('lookupMatter').addEventListener('click', async () => {
+    const matterId = document.getElementById('matterIdInput').value.trim();
+    
+    if (!matterId) {
+        showError('Please enter a Matter ID');
+        return;
+    }
+    
+    if (!/^\d+$/.test(matterId)) {
+        showError('Matter ID must be a number');
+        return;
+    }
+    
+    try {
+        updateStatus('loading', 'Looking up matter...');
+        showLoading(`Loading matter ${matterId}...`);
+        
+        const data = await client.getMatterById(matterId);
+        
+        updateStatus('connected', 'Connected to Actionstep');
+        
+        // The response contains an 'actions' array with the matter
+        if (data.actions && data.actions.length > 0) {
+            displayMatterDetails(data.actions[0]);
+        } else {
+            showError(`Matter ID ${matterId} not found`);
+        }
+    } catch (error) {
+        console.error('Failed to lookup matter:', error);
+        updateStatus('disconnected', 'Failed to lookup matter');
+        showError(`Failed to lookup matter: ${error.message}`);
+    }
+});
+
+// Allow Enter key to trigger lookup
+document.getElementById('matterIdInput').addEventListener('keypress', (event) => {
+    if (event.key === 'Enter') {
+        document.getElementById('lookupMatter').click();
     }
 });
 
