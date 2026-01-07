@@ -75,6 +75,8 @@ class ActionstepClient {
         }
 
         const requestId = this.generateRequestId();
+        
+        console.log('🔵 Making API request:', endpoint);
 
         return new Promise((resolve, reject) => {
             // Store resolver for this request
@@ -83,6 +85,7 @@ class ActionstepClient {
             // Set timeout
             const timeout = setTimeout(() => {
                 this.pendingRequests.delete(requestId);
+                console.error('❌ Request timeout:', endpoint);
                 reject(new Error('Request timeout'));
             }, 30000); // 30 second timeout
 
@@ -90,11 +93,13 @@ class ActionstepClient {
             const originalReject = reject;
             const wrappedReject = (error) => {
                 clearTimeout(timeout);
+                console.error('❌ API request failed:', endpoint, error);
                 originalReject(error);
             };
             this.pendingRequests.set(requestId, { 
                 resolve: (data) => {
                     clearTimeout(timeout);
+                    console.log('✅ API response received:', endpoint);
                     resolve(data);
                 }, 
                 reject: wrappedReject 
@@ -116,13 +121,17 @@ class ActionstepClient {
 
     // Convenience methods
     async getMatters(params = {}) {
-        const queryString = new URLSearchParams(params).toString();
+        const queryString = Object.keys(params)
+            .map(key => `${key}=${encodeURIComponent(params[key])}`)
+            .join('&');
         const endpoint = queryString ? `api/rest/actions?${queryString}` : 'api/rest/actions';
         return this.apiRequest(endpoint, { method: 'GET' });
     }
 
     async getContacts(params = {}) {
-        const queryString = new URLSearchParams(params).toString();
+        const queryString = Object.keys(params)
+            .map(key => `${key}=${encodeURIComponent(params[key])}`)
+            .join('&');
         const endpoint = queryString ? `api/rest/participants?${queryString}` : 'api/rest/participants';
         return this.apiRequest(endpoint, { method: 'GET' });
     }
