@@ -1,5 +1,9 @@
 /**
  * Actionstep Client - Communicates with parent Actionstep page via postMessage
+ * 
+ * Version: 1.2.0
+ * Last Updated: 2026-01-07
+ * Changes: Added automatic participant lookup, getParticipantById method, clickable links
  */
 
 class ActionstepClient {
@@ -138,6 +142,10 @@ class ActionstepClient {
 
     async getMatterById(matterId) {
         return this.apiRequest(`api/rest/actions/${matterId}`, { method: 'GET' });
+    }
+
+    async getParticipantById(participantId) {
+        return this.apiRequest(`api/rest/participants/${participantId}`, { method: 'GET' });
     }
 }
 
@@ -304,13 +312,179 @@ function displayMatterDetails(matter) {
             ${assignedToId ? `
                 <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
                     <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Assigned To</div>
-                    <div style="font-size: 14px; color: #333;">Participant ID: ${assignedToId}</div>
+                    <div id="assignedTo-${assignedToId}" style="font-size: 14px; color: #666;">
+                        <span style="display: inline-block; width: 20px; height: 20px; border: 2px solid #007bff; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; vertical-align: middle;"></span>
+                        Loading participant...
+                    </div>
                 </div>
             ` : ''}
             
             <details style="margin-top: 20px;">
                 <summary style="cursor: pointer; color: #007bff; font-weight: 600;">Show Full JSON</summary>
                 <pre style="margin-top: 10px; background: white; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px; max-height: 400px; overflow-y: auto;">${JSON.stringify(matter, null, 2)}</pre>
+            </details>
+        </div>
+    `;
+    
+    output.innerHTML = html;
+
+    // Fetch participant details if we have an ID
+    if (assignedToId) {
+        fetchAndDisplayParticipant(assignedToId);
+    }
+}
+
+async function fetchAndDisplayParticipant(participantId) {
+    try {
+        console.log('🔍 Fetching participant:', participantId);
+        const response = await client.getParticipantById(participantId);
+        
+        console.log('📋 Participant response:', response);
+        
+        // Parse participant from JSON:API format
+        let participant = null;
+        if (response.data) {
+            participant = {
+                id: response.data.id,
+                type: response.data.type,
+                ...response.data.attributes
+            };
+        }
+        
+        const container = document.getElementById(`assignedTo-${participantId}`);
+        if (container && participant) {
+            const displayName = participant.companyName || 
+                              `${participant.firstName || ''} ${participant.lastName || ''}`.trim() ||
+                              'Unknown';
+            
+            container.innerHTML = `
+                <a href="#" 
+                   onclick="showParticipantDetails('${participantId}'); return false;" 
+                   style="color: #007bff; text-decoration: none; font-weight: 600;">
+                    ${displayName}
+                </a>
+                <span style="color: #999; font-size: 12px; margin-left: 8px;">(ID: ${participantId})</span>
+            `;
+        } else if (container) {
+            container.innerHTML = `<span style="color: #dc3545;">Failed to load participant</span>`;
+        }
+    } catch (error) {
+        console.error('Failed to fetch participant:', error);
+        const container = document.getElementById(`assignedTo-${participantId}`);
+        if (container) {
+            container.innerHTML = `<span style="color: #999;">Participant ID: ${participantId} (details unavailable)</span>`;
+        }
+    }
+}
+
+async function showParticipantDetails(participantId) {
+    try {
+        updateStatus('loading', 'Loading participant details...');
+        showLoading(`Loading participant ${participantId}...`);
+        
+        const response = await client.getParticipantById(participantId);
+        
+        updateStatus('connected', 'Connected to Actionstep');
+        
+        // Parse participant from JSON:API format
+        if (response.data) {
+            const participant = {
+                id: response.data.id,
+                type: response.data.type,
+                ...response.data.attributes,
+                links: response.data.relationships
+            };
+            
+            displayParticipantDetails(participant);
+        } else {
+            showError('Participant not found');
+        }
+    } catch (error) {
+        console.error('Failed to load participant:', error);
+        updateStatus('disconnected', 'Failed to load participant');
+        showError(`Failed to load participant: ${error.message}`);
+    }
+}
+
+function displayParticipantDetails(participant) {
+    const output = document.getElementById('dataOutput');
+    
+    if (!participant) {
+        output.innerHTML = '<div class="error">Participant not found.</div>';
+        return;
+    }
+
+    console.log('📋 Displaying participant:', participant);
+
+    const isCompany = participant.isCompany || participant.companyName;
+    const displayName = participant.companyName || 
+                       `${participant.firstName || ''} ${participant.lastName || ''}`.trim() ||
+                       'Unknown';
+
+    const html = `
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #28a745;">
+            <h3 style="margin: 0 0 20px 0; color: #28a745; font-size: 20px;">
+                ${displayName}
+            </h3>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                <div>
+                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Participant ID</div>
+                    <div style="font-size: 16px; font-weight: 600; color: #333;">${participant.id}</div>
+                </div>
+                
+                <div>
+                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Type</div>
+                    <div style="font-size: 16px; font-weight: 600; color: #333;">
+                        ${isCompany ? 'Company' : 'Individual'}
+                    </div>
+                </div>
+                
+                ${participant.email ? `
+                    <div>
+                        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Email</div>
+                        <div style="font-size: 16px; font-weight: 600; color: #333;">
+                            <a href="mailto:${participant.email}" style="color: #007bff; text-decoration: none;">
+                                ${participant.email}
+                            </a>
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${participant.mobilePhone ? `
+                    <div>
+                        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Mobile</div>
+                        <div style="font-size: 16px; font-weight: 600; color: #333;">
+                            <a href="tel:${participant.mobilePhone}" style="color: #007bff; text-decoration: none;">
+                                ${participant.mobilePhone}
+                            </a>
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+            
+            ${!isCompany && (participant.firstName || participant.lastName) ? `
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+                    <div style="font-size: 14px; color: #666;">
+                        ${participant.firstName ? `<div><strong>First Name:</strong> ${participant.firstName}</div>` : ''}
+                        ${participant.lastName ? `<div><strong>Last Name:</strong> ${participant.lastName}</div>` : ''}
+                        ${participant.preferredName ? `<div><strong>Preferred Name:</strong> ${participant.preferredName}</div>` : ''}
+                    </div>
+                </div>
+            ` : ''}
+            
+            ${participant.mailingAddress ? `
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Mailing Address</div>
+                    <div style="font-size: 14px; color: #333; line-height: 1.6;">
+                        ${participant.mailingAddress}
+                    </div>
+                </div>
+            ` : ''}
+            
+            <details style="margin-top: 20px;">
+                <summary style="cursor: pointer; color: #28a745; font-weight: 600;">Show Full JSON</summary>
+                <pre style="margin-top: 10px; background: white; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px; max-height: 400px; overflow-y: auto;">${JSON.stringify(participant, null, 2)}</pre>
             </details>
         </div>
     `;
