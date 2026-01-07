@@ -169,12 +169,28 @@ function showError(message) {
 function displayMatters(mattersData) {
     const output = document.getElementById('dataOutput');
     
-    if (!mattersData || !mattersData.actions || mattersData.actions.length === 0) {
+    console.log('📋 displayMatters received:', mattersData);
+    
+    // Handle JSON:API format
+    let matters = [];
+    if (mattersData.data && Array.isArray(mattersData.data)) {
+        // Convert JSON:API format to flat objects
+        matters = mattersData.data.map(item => ({
+            id: item.id,
+            type: item.type,
+            ...item.attributes,
+            links: item.relationships
+        }));
+    } else if (mattersData.actions) {
+        // Legacy format (if it exists)
+        matters = mattersData.actions;
+    }
+    
+    if (!matters || matters.length === 0) {
         output.innerHTML = '<p style="color: #666;">No matters found.</p>';
         return;
     }
 
-    const matters = mattersData.actions;
     const html = `
         <ul class="matter-list">
             ${matters.map(matter => `
@@ -195,12 +211,28 @@ function displayMatters(mattersData) {
 function displayContacts(contactsData) {
     const output = document.getElementById('dataOutput');
     
-    if (!contactsData || !contactsData.participants || contactsData.participants.length === 0) {
+    console.log('📋 displayContacts received:', contactsData);
+    
+    // Handle JSON:API format
+    let contacts = [];
+    if (contactsData.data && Array.isArray(contactsData.data)) {
+        // Convert JSON:API format to flat objects
+        contacts = contactsData.data.map(item => ({
+            id: item.id,
+            type: item.type,
+            ...item.attributes,
+            links: item.relationships
+        }));
+    } else if (contactsData.participants) {
+        // Legacy format (if it exists)
+        contacts = contactsData.participants;
+    }
+    
+    if (!contacts || contacts.length === 0) {
         output.innerHTML = '<p style="color: #666;">No contacts found.</p>';
         return;
     }
 
-    const contacts = contactsData.participants;
     const html = `
         <ul class="matter-list">
             ${contacts.map(contact => `
@@ -234,6 +266,11 @@ function displayMatterDetails(matter) {
         return;
     }
 
+    console.log('📋 Displaying matter:', matter);
+
+    // Extract assigned to ID from relationships if present
+    const assignedToId = matter.links?.assignedTo?.data?.id || matter.links?.assignedTo;
+
     const html = `
         <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #007bff;">
             <h3 style="margin: 0 0 20px 0; color: #007bff; font-size: 20px;">
@@ -253,7 +290,7 @@ function displayMatterDetails(matter) {
                 
                 <div>
                     <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Status</div>
-                    <div style="font-size: 16px; font-weight: 600; color: ${matter.status === 'open' ? '#28a745' : '#6c757d'};">
+                    <div style="font-size: 16px; font-weight: 600; color: ${matter.status === 'Active' || matter.status === 'open' ? '#28a745' : '#6c757d'};">
                         ${matter.status || 'N/A'}
                     </div>
                 </div>
@@ -264,10 +301,10 @@ function displayMatterDetails(matter) {
                 </div>
             </div>
             
-            ${matter.links && matter.links.assignedTo ? `
+            ${assignedToId ? `
                 <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
                     <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Assigned To</div>
-                    <div style="font-size: 14px; color: #333;">Participant ID: ${matter.links.assignedTo}</div>
+                    <div style="font-size: 14px; color: #333;">Participant ID: ${assignedToId}</div>
                 </div>
             ` : ''}
             
@@ -358,25 +395,27 @@ document.getElementById('lookupMatter').addEventListener('click', async () => {
         updateStatus('loading', 'Looking up matter...');
         showLoading(`Loading matter ${matterId}...`);
         
-        const data = await client.getMatterById(matterId);
+        const response = await client.getMatterById(matterId);
         
-        console.log('📋 Matter lookup response:', data);
-        console.log('📋 Has actions array?', !!data.actions);
-        console.log('📋 Actions array:', data.actions);
+        console.log('📋 Matter lookup response:', response);
         
         updateStatus('connected', 'Connected to Actionstep');
         
-        // The response contains an 'actions' array with the matter
-        if (data.actions && data.actions.length > 0) {
-            displayMatterDetails(data.actions[0]);
-        } else if (data.actions && data.actions[0]) {
-            // Sometimes the response might be just an object
-            displayMatterDetails(data.actions[0]);
+        // JSON:API format has data in response.data, not response.actions
+        if (response.data) {
+            // Convert JSON:API format to flat object
+            const matter = {
+                id: response.data.id,
+                type: response.data.type,
+                ...response.data.attributes,
+                links: response.data.relationships
+            };
+            
+            console.log('📋 Parsed matter:', matter);
+            displayMatterDetails(matter);
         } else {
-            console.error('Unexpected response structure:', data);
-            // Show raw JSON for debugging
-            showError(`Unexpected response structure. Check console for details.`);
-            console.log('Full response:', JSON.stringify(data, null, 2));
+            console.error('Unexpected response structure:', response);
+            showError(`Matter ID ${matterId} not found`);
         }
     } catch (error) {
         console.error('Failed to lookup matter:', error);
