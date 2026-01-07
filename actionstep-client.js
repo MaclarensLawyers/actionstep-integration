@@ -360,13 +360,23 @@ document.getElementById('lookupMatter').addEventListener('click', async () => {
         
         const data = await client.getMatterById(matterId);
         
+        console.log('📋 Matter lookup response:', data);
+        console.log('📋 Has actions array?', !!data.actions);
+        console.log('📋 Actions array:', data.actions);
+        
         updateStatus('connected', 'Connected to Actionstep');
         
         // The response contains an 'actions' array with the matter
         if (data.actions && data.actions.length > 0) {
             displayMatterDetails(data.actions[0]);
+        } else if (data.actions && data.actions[0]) {
+            // Sometimes the response might be just an object
+            displayMatterDetails(data.actions[0]);
         } else {
-            showError(`Matter ID ${matterId} not found`);
+            console.error('Unexpected response structure:', data);
+            // Show raw JSON for debugging
+            showError(`Unexpected response structure. Check console for details.`);
+            console.log('Full response:', JSON.stringify(data, null, 2));
         }
     } catch (error) {
         console.error('Failed to lookup matter:', error);
